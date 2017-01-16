@@ -1,0 +1,29 @@
+#%RAML 0.8
+title: pelatro-sys
+version: v1
+#baseUri: http://localhost/pelatro-sys/{version}
+baseUri: http://mocksvc.mulesoft.com/mocks/9b8863c9-e094-43ac-8c3c-9c4e9e4816ee/pelatro-sys/{version}
+traits:
+  - business-channel-info:
+      headers:
+          businessId:
+            type: string
+            required: true
+            description: Business Unit Identifier, current supported mechanisms are International Country Code ISO 2 Character Country Code. Please see https://countrycode.org/ for details.
+          channelId:
+            type: string
+            required: true
+            enum: [CRM, TOPUP, SCPORTAL, SCAPP, CAMPAIGN, IVR, USSD, CUSTIVR]  
+            
+/notifications/topup:
+  post:
+    is: [business-channel-info]
+    description: Generates a new topup notification to Pelatro system.
+    body:
+      application/json:
+        example: !include examples/notifications/topup/postTopupNotificationRequest.json
+    responses:
+      200:
+        body:
+          application/json:
+            example: !include examples/notifications/topup/postTopupNotificationResponse.json

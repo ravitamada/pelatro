@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/apikit" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns:dw="http://www.mulesoft.org/schema/mule/ee/dw" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:spring="http://www.springframework.org/schema/beans" xmlns:tcp="http://www.mulesoft.org/schema/mule/tcp" xmlns:tracking="http://www.mulesoft.org/schema/mule/ee/tracking" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd
+http://www.mulesoft.org/schema/mule/apikit http://www.mulesoft.org/schema/mule/apikit/current/mule-apikit.xsd
+http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
+http://www.mulesoft.org/schema/mule/tcp http://www.mulesoft.org/schema/mule/tcp/current/mule-tcp.xsd
+http://www.mulesoft.org/schema/mule/ee/dw http://www.mulesoft.org/schema/mule/ee/dw/current/dw.xsd
+http://www.mulesoft.org/schema/mule/ee/tracking http://www.mulesoft.org/schema/mule/ee/tracking/current/mule-tracking-ee.xsd">
+    <apikit:config name="api-config" raml="api.raml" consoleEnabled="true" consolePath="console" doc:name="Router" />
+    <http:request-config name="HTTP_Request_Configuration" host="${pelatro.rest.host}" port="${pelatro.rest.port}" basePath="${pelatro.rest.basePath}" doc:name="HTTP Request Configuration"/>
+    <flow name="api-main">
+        <http:listener config-ref="api-httpListenerConfig" path="${pelatro.sys.api.path}" doc:name="HTTP" />
+        <apikit:router config-ref="api-config" doc:name="APIkit Router" />
+        <exception-strategy ref="api-apiKitGlobalExceptionMapping" doc:name="Reference Exception Strategy" />
+    </flow>
+    <flow name="post:/notifications/topup:api-config">
+        <dw:transform-message doc:name="Build and Transform Payload to Java">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+	action:payload.action,
+	source:payload.source,
+	hostIP:payload.host,
+	subscriberNumber:payload.subscriber,
+	topupValue:payload.amount,
+	topupDate:payload.date,
+	balanceAfterRecharge:payload.balanceAfterRecharge,
+	topupType:payload.topupType //Should be changed to the name, e.g 1 = voucher, 2 = non voucher
+}]]></dw:set-payload>
+        </dw:transform-message>
+        <http:request config-ref="HTTP_Request_Configuration" path="${pelatro.rest.notification.uri}" method="POST" doc:name="HTTP"/>
+        <dw:transform-message doc:name="Transform Message">
+            <dw:set-payload><![CDATA[%dw 1.0
+%output application/java
+---
+payload]]></dw:set-payload>
+        </dw:transform-message>
+        <choice doc:name="If Http Status is 200">
+            <when expression="#[message.inboundProperties.'http.status' == 200]">
+                <dw:transform-message doc:name="Build JSON response">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+  "responseCode": 0,
+  "description": "Notification sent successfully"
+}]]></dw:set-payload>
+                </dw:transform-message>
+            </when>
+            <otherwise>
+                <dw:transform-message doc:name="Build error JSON Response">
+                    <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+  "responseCode": 99,
+  "description": "There was an error on the Pelatro System"
+}]]></dw:set-payload>
+                </dw:transform-message>
+            </otherwise>
+        </choice>
+    </flow>
+   
+    <apikit:mapping-exception-strategy name="api-apiKitGlobalExceptionMapping">
+        <apikit:mapping statusCode="404">
+            <apikit:exception value="org.mule.module.apikit.exception.NotFoundException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property" />
+            <set-payload value="{ &quot;message&quot;: &quot;Resource not found&quot; }" doc:name="Set Payload" />
+        </apikit:mapping>
+        <apikit:mapping statusCode="405">
+            <apikit:exception value="org.mule.module.apikit.exception.MethodNotAllowedException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property" />
+            <set-payload value="{ &quot;message&quot;: &quot;Method not allowed&quot; }" doc:name="Set Payload" />
+        </apikit:mapping>
+        <apikit:mapping statusCode="415">
+            <apikit:exception value="org.mule.module.apikit.exception.UnsupportedMediaTypeException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property" />
+            <set-payload value="{ &quot;message&quot;: &quot;Unsupported media type&quot; }" doc:name="Set Payload" />
+        </apikit:mapping>
+        <apikit:mapping statusCode="406">
+            <apikit:exception value="org.mule.module.apikit.exception.NotAcceptableException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property" />
+            <set-payload value="{ &quot;message&quot;: &quot;Not acceptable&quot; }" doc:name="Set Payload" />
+        </apikit:mapping>
+        <apikit:mapping statusCode="400">
+            <apikit:exception value="org.mule.module.apikit.exception.BadRequestException" />
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property" />
+            <set-payload value="{ &quot;message&quot;: &quot;Bad request&quot; }" doc:name="Set Payload" />
+        </apikit:mapping>
+        <apikit:mapping statusCode="500">
+            <apikit:exception value="java.lang.Exception" />
+            <apikit:exception value="java.net.ConnectException" />
+            <tracking:custom-event event-name="Topup Notifications Pelatro Error" doc:name="Custom Business Event">
+                <tracking:meta-data key="payload" value="#[payload]"/>
+            </tracking:custom-event>
+            <set-property propertyName="Content-Type" value="application/json" doc:name="Property" />
+            <dw:transform-message doc:name="Build connection error JSON response">
+                <dw:set-payload><![CDATA[%dw 1.0
+%output application/json
+---
+{
+  "responseCode": 99,
+  "description": "Error trying to connect to Pelatro system"
+}]]></dw:set-payload>
+            </dw:transform-message>
+        </apikit:mapping>
+    </apikit:mapping-exception-strategy>
+</mule>

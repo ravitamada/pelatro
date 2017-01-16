@@ -1,0 +1,10 @@
+{
+	"action":"balanceUpdate",
+	"source":"btc-esb",
+	"host":"10.1.1.1",
+	"subscriber":"12984347",
+	"amount":"12",
+	"date":"20170202",
+	"balanceAfterRecharge":"16",
+	"topupType":"voucher"
+}
